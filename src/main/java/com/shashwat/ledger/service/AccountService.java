@@ -4,13 +4,17 @@ import com.shashwat.ledger.dto.AccountCreateRequest;
 import com.shashwat.ledger.dto.AccountResponse;
 import com.shashwat.ledger.exception.ResourceNotFoundException;
 import com.shashwat.ledger.model.Account;
+import com.shashwat.ledger.model.LedgerEntry;
 import com.shashwat.ledger.model.Party;
 import com.shashwat.ledger.repository.AccountRepository;
+import com.shashwat.ledger.repository.LedgerEntryRepository;
 import com.shashwat.ledger.repository.PartyRepository;
+import com.shashwat.ledger.security.SecurityUtil;
+import jakarta.transaction.Transactional;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -18,25 +22,34 @@ public class AccountService {
 
     private final AccountRepository accountRepository;
     private final PartyRepository partyRepository;
+    private final LedgerEntryRepository ledgerEntryRepository;
+    private final SecurityUtil securityUtil;
 
     public AccountService(AccountRepository accountRepository,
-                          PartyRepository partyRepository) {
+                          PartyRepository partyRepository,
+                          LedgerEntryRepository ledgerEntryRepository,
+                          SecurityUtil securityUtil) {
+
         this.accountRepository = accountRepository;
         this.partyRepository = partyRepository;
+        this.ledgerEntryRepository = ledgerEntryRepository;
+        this.securityUtil = securityUtil;
     }
 
-    /**
-     * Create a bill (Account) for an existing customer (Party)
-     */
+    @Transactional
     public Account createAccount(AccountCreateRequest request) {
 
-        // 1️⃣ Fetch customer (Party)
-        Party party = partyRepository.findById(request.getPartyId())
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("Customer not found with id: "
-                                + request.getPartyId()));
+        String email = securityUtil.getCurrentUserEmail();
 
-        // 2️⃣ Create Account (Bill)
+        Party party = partyRepository
+                .findByIdAndUserEmail(request.getPartyId(), email)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Customer not found with id: " + request.getPartyId()
+                        ));
+
+        LocalDateTime now = LocalDateTime.now();
+
         Account account = Account.builder()
                 .party(party)
                 .totalAmount(request.getTotalAmount())
@@ -45,43 +58,116 @@ public class AccountService {
                 .pendingAmount(request.getTotalAmount())
                 .status("OPEN")
                 .description(request.getDescription())
-                .createdDate(LocalDateTime.now())
+                .createdDate(now)
                 .build();
 
-        // 3️⃣ Save & return
-        return accountRepository.save(account);
+        accountRepository.save(account);
+
+        LedgerEntry entry = LedgerEntry.builder()
+                .account(account)
+                .amount(request.getTotalAmount())
+                .type("DEBIT")
+                .description("Initial bill: " + request.getDescription())
+                .createdDate(now)
+                .build();
+
+        ledgerEntryRepository.save(entry);
+
+        return account;
     }
 
+    @Transactional
+    public Page<AccountResponse> getTopPendingAccounts(int page, int size) {
+
+        String email = securityUtil.getCurrentUserEmail();
+        System.out.println(email+" "+"!!!!!!!!!!!!!!!!!!!1");
+
+        Pageable pageable = PageRequest.of(page, size);
+
+        Page<Account> accounts =
+                accountRepository.findOpenAccounts("OPEN", email, pageable);
+
+        return accounts.map(this::mapToResponse);
+    }
+
+    @Transactional
     public List<AccountResponse> getAccountsForParty(Long partyId) {
 
-        // Optional: validate party exists (recommended)
+        String email = securityUtil.getCurrentUserEmail();
+        System.out.println(email+"   reached insdie service layer");
 
-        if (!partyRepository.existsById(partyId)) {
-            throw new ResourceNotFoundException(
-                    "Customer not found with id: " + partyId
-            );
-        }
+        List<Account> accounts =
+                accountRepository.findByPartyIdAndUserEmail(partyId, email);
+        System.out.println();
 
-        List<Account> list= accountRepository.findByPartyId(partyId);
-        List<AccountResponse> list1=new ArrayList<>();
-        for(Account a:list){
-            list1.add(mapToAccountResponse(a));
-        }
-        return list1;
+        return accounts.stream()
+                .map(this::mapToResponse)
+                .toList();
     }
 
-    public AccountResponse mapToAccountResponse(Account account) {
+    @Transactional
+    public AccountResponse getAccountById(Long accountId) {
+
+        String email = securityUtil.getCurrentUserEmail();
+
+        Account account = accountRepository
+                .findByIdAndPartyUserEmail(accountId, email)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Account not found with id: " + accountId
+                        ));
+
+        System.out.println("fetched");
+
+        return mapToResponse(account);
+    }
+
+    @Transactional
+    public void deleteAccount(Long accountId) {
+
+        String email = securityUtil.getCurrentUserEmail();
+
+        Account account = accountRepository
+                .findByIdAndPartyUserEmail(accountId, email)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Account not found with id: " + accountId
+                        ));
+
+        accountRepository.delete(account);
+    }
+
+    public String getAccountStatus(Long accountId) {
+
+        String email = securityUtil.getCurrentUserEmail();
+
+        Account account = accountRepository
+                .findByIdAndPartyUserEmail(accountId, email)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Account not found with id: " + accountId
+                        ));
+
+        return account.getStatus();
+    }
+
+    private AccountResponse mapToResponse(Account account) {
+
+        double totalAmount = account.getTotalAmount() == null ? 0 : account.getTotalAmount();
+        double totalDebit = account.getTotalDebit() == null ? 0 : account.getTotalDebit();
+        double totalCredit = account.getTotalCredit() == null ? 0 : account.getTotalCredit();
+
+        double totalBill = totalAmount + totalDebit;
+        double pending = totalBill - totalCredit;
+
         return AccountResponse.builder()
                 .id(account.getId())
-                .totalAmount(account.getTotalAmount())
-                .totalCredit(account.getTotalCredit())
-                .totalDebit(account.getTotalDebit())
-                .pendingAmount(account.getPendingAmount())
-                .status(account.getStatus())
+                .partyName(account.getParty().getName())
                 .description(account.getDescription())
+                .totalBill(totalBill)
+                .pendingAmount(Math.max(pending, 0))
+                .status(account.getStatus())
                 .createdDate(account.getCreatedDate())
                 .build();
     }
-
-
 }

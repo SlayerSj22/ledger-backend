@@ -3,6 +3,7 @@ package com.shashwat.ledger.controller;
 import com.shashwat.ledger.dto.AddPaymentRequest;
 import com.shashwat.ledger.dto.ApiResponse;
 import com.shashwat.ledger.dto.LedgerEntryResponse;
+import com.shashwat.ledger.dto.UpdateLedgerEntryRequest;
 import com.shashwat.ledger.model.LedgerEntry;
 import com.shashwat.ledger.repository.LedgerEntryRepository;
 import com.shashwat.ledger.service.LedgerService;
@@ -28,8 +29,9 @@ public class LedgerController {
     public ApiResponse<LedgerEntryResponse> addPayment(
             @RequestBody AddPaymentRequest request) {
 
-        LedgerEntry entry = ledgerService.addPayment(request);
 
+
+        LedgerEntry entry = ledgerService.addPayment(request);
         LedgerEntryResponse response = ledgerService.mapToLedgerResponse(entry);
 
         return ApiResponse.<LedgerEntryResponse>builder()
@@ -61,6 +63,48 @@ public class LedgerController {
                 .status(200)
                 .build();
     }
+
+    @DeleteMapping("/entry/{entryId}")
+    public ApiResponse<Void> deleteLedgerEntry(
+            @PathVariable Long entryId) {
+
+        ledgerService.deleteLedgerEntry(entryId);
+
+        return ApiResponse.<Void>builder()
+                .data(null)
+                .message("Ledger entry deleted successfully")
+                .status(200)
+                .build();
+    }
+
+    @PutMapping("/entry/{entryId}")
+    public ApiResponse<LedgerEntryResponse> updateLedgerEntry(
+            @PathVariable Long entryId,
+            @RequestBody UpdateLedgerEntryRequest request) {
+
+        LedgerEntry entry =
+                ledgerService.updateLedgerEntry(entryId, request);
+
+        return ApiResponse.<LedgerEntryResponse>builder()
+                .data(ledgerService.mapToLedgerResponse(entry))
+                .message("Ledger entry updated successfully")
+                .status(200)
+                .build();
+    }
+
+    @GetMapping("/entry/{entryId}")
+    public ApiResponse<LedgerEntryResponse> getLedgerEntry(
+            @PathVariable Long entryId) {
+
+        LedgerEntry entry = ledgerService.getEntry(entryId);
+
+        return ApiResponse.<LedgerEntryResponse>builder()
+                .data(ledgerService.mapToLedgerResponse(entry))
+                .message("Ledger entry fetched")
+                .status(200)
+                .build();
+    }
+
 
 }
 

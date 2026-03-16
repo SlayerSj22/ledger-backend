@@ -12,11 +12,19 @@ import java.time.LocalDateTime;
 public class AccountResponse {
 
     private Long id;
-    private Double totalAmount;
-    private Double totalCredit;
-    private Double totalDebit;
-    private Double pendingAmount;
-    private String status;
+
+    private String partyName;
+
     private String description;
+
+    /**
+     * baseAmount + totalDebit
+     */
+    private Double totalBill;
+
+    private Double pendingAmount;
+
+    private String status;
+
     private LocalDateTime createdDate;
 }
