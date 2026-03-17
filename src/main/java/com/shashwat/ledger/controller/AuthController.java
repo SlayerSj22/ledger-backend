@@ -28,15 +28,6 @@ public class AuthController {
         try {
 
             BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
-
-            System.out.println(encoder.encode("admin123"));
-            System.out.println(
-                    encoder.matches(
-                            request.getPassword(),
-                            "$2a$10$9Dk9C0rK1W3TQe8dR3kYxO0vFq6qVbJ9Xj0r1g6l4x5P8m2u7zKjS"
-                    )
-            );
-
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
                             request.getEmail(),
@@ -49,6 +40,7 @@ public class AuthController {
         }
 
         String token = jwtService.generateToken(request.getEmail());
+        System.out.println(token);
 
         return new AuthResponse(token);
     }
