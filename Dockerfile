@@ -1,17 +1,11 @@
-# Use Java 21 base image
-FROM eclipse-temurin:21-jdk
-
-# Set working directory
+FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /app
-
-# Copy project files
 COPY . .
+RUN mvn clean package -DskipTests
 
-# Build the application
-RUN ./mvnw clean package -DskipTests
+FROM eclipse-temurin:21-jdk
+WORKDIR /app
+COPY --from=build /app/target/ledger-0.0.1-SNAPSHOT.jar app.jar
 
-# Expose Spring Boot port
 EXPOSE 8080
-
-# Run the jar
-CMD ["java", "-jar", "target/ledger-0.0.1-SNAPSHOT.jar"]
+ENTRYPOINT ["java","-jar","app.jar"]
